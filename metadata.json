@@ -1,5 +1,5 @@
 {
   "name": "PulseGuard",
-  "description": "A comprehensive health tracking application for monitoring blood pressure, pulse, sugar levels, and medications with AI insights.",
+  "description": "A comprehensive health tracking application for monitoring blood pressure, SpO2, sugar levels, and medications with AI insights.",
   "requestFramePermissions": []
 }

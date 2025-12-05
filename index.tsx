@@ -50,7 +50,10 @@ import {
   Heart,
   Mail,
   ArrowLeft,
-  CheckCircle2
+  CheckCircle2,
+  Wind,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -78,7 +81,8 @@ type UserProfile = {
   age: number;
 };
 
-type RecordType = 'bp' | 'sugar' | 'pulse' | 'heartrate' | 'medicine';
+// Renamed Pulse to SpO2
+type RecordType = 'bp' | 'sugar' | 'spo2' | 'heartrate' | 'medicine';
 
 interface HealthRecord {
   id: string;
@@ -94,6 +98,7 @@ interface HealthRecord {
   medicineName?: string;
   dosage?: string;
   frequency?: string;
+  description?: string;
 }
 
 // --- Components ---
@@ -102,7 +107,7 @@ interface HealthRecord {
 const SimpleLineChart = ({ data, lines, height = 200 }) => {
   const [selectedPoint, setSelectedPoint] = useState<{x: number, y: number, value: number, label: string, date: string} | null>(null);
 
-  if (!data || data.length < 2) return <div className="h-48 flex items-center justify-center text-gray-400 bg-gray-50 rounded-lg">Not enough data to display chart</div>;
+  if (!data || data.length < 2) return <div className="h-48 flex items-center justify-center text-gray-400 dark:text-gray-600 bg-gray-50 dark:bg-slate-900 rounded-lg">Not enough data to display chart</div>;
 
   // Sort data by timestamp ascending
   const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
@@ -146,8 +151,10 @@ const SimpleLineChart = ({ data, lines, height = 200 }) => {
             x2={svgWidth - padding} 
             y2={getY(chartMin + t * (chartMax - chartMin))} 
             stroke="#e2e8f0" 
+            strokeOpacity="0.5"
             strokeWidth="1" 
             vectorEffect="non-scaling-stroke"
+            className="dark:stroke-slate-700"
           />
         ))}
 
@@ -188,8 +195,8 @@ const SimpleLineChart = ({ data, lines, height = 200 }) => {
                        x: cx, 
                        y: cy, 
                        value: val, 
-                       label: line.key === 'systolic' ? 'Sys' : line.key === 'diastolic' ? 'Dia' : 'Val',
-                       date: new Date(d.timestamp).toLocaleDateString() + ' ' + new Date(d.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+                       label: line.key === 'systolic' ? 'Sys' : line.key === 'diastolic' ? 'Dia' : line.key === 'spo2' ? 'SpO2' : 'Val',
+                       date: new Date(d.timestamp).toLocaleDateString() + ' ' + new Date(d.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: true})
                      });
                    }}
                    onClick={(e) => {
@@ -198,8 +205,8 @@ const SimpleLineChart = ({ data, lines, height = 200 }) => {
                        x: cx, 
                        y: cy, 
                        value: val, 
-                       label: line.key === 'systolic' ? 'Sys' : line.key === 'diastolic' ? 'Dia' : 'Val',
-                       date: new Date(d.timestamp).toLocaleDateString() + ' ' + new Date(d.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+                       label: line.key === 'systolic' ? 'Sys' : line.key === 'diastolic' ? 'Dia' : line.key === 'spo2' ? 'SpO2' : 'Val',
+                       date: new Date(d.timestamp).toLocaleDateString() + ' ' + new Date(d.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: true})
                      });
                    }}
                    className="cursor-pointer group"
@@ -215,7 +222,7 @@ const SimpleLineChart = ({ data, lines, height = 200 }) => {
                     stroke={line.color} 
                     strokeWidth="2" 
                     vectorEffect="non-scaling-stroke"
-                    className="transition-all group-hover:r-6"
+                    className="transition-all group-hover:r-6 dark:fill-slate-900"
                   />
                 </g>
              );
@@ -281,10 +288,10 @@ const LiveClock = () => {
 
   return (
     <div className="flex flex-col items-end">
-      <div className="text-3xl font-bold text-gray-800 tabular-nums">
-        {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      <div className="text-3xl font-bold text-gray-800 dark:text-gray-100 tabular-nums">
+        {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
       </div>
-      <div className="text-sm text-sky-600 font-medium flex items-center gap-1">
+      <div className="text-sm text-sky-600 dark:text-sky-400 font-medium flex items-center gap-1">
         <Calendar size={14} />
         {time.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}
       </div>
@@ -296,7 +303,7 @@ const LiveClock = () => {
 
 const formatDate = (dateString: string | number) => {
   return new Date(dateString).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
   });
 };
 
@@ -311,6 +318,15 @@ const App = () => {
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [historyView, setHistoryView] = useState<'table' | 'chart'>('table');
   
+  // Theme State
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') === 'dark' || 
+             (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+    return false;
+  });
+
   // Auth Form States
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -331,14 +347,28 @@ const App = () => {
   const [bpDia, setBpDia] = useState('');
   const [sugarVal, setSugarVal] = useState('');
   const [sugarType, setSugarType] = useState<'Fasting' | 'Post-Prandial' | 'Random'>('Random');
-  const [pulseVal, setPulseVal] = useState('');
+  const [spo2Val, setSpo2Val] = useState(''); // Replaces pulseVal
   const [heartRateVal, setHeartRateVal] = useState('');
   
   // Medicine States
   const [medName, setMedName] = useState('');
   const [medDosage, setMedDosage] = useState('');
   const [medFreq, setMedFreq] = useState('');
+  const [medDesc, setMedDesc] = useState('');
   const [editingMedId, setEditingMedId] = useState<string | null>(null);
+
+  // --- Theme Effect ---
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
+
+  const toggleTheme = () => setDarkMode(!darkMode);
 
   // --- Firebase Subscriptions ---
 
@@ -404,9 +434,13 @@ const App = () => {
         let type: RecordType = 'bp'; 
         if (data.type === 'BP') type = 'bp';
         if (data.type === 'Sugar') type = 'sugar';
-        if (data.type === 'Pulse') type = 'pulse';
+        // Map legacy 'Pulse' (which was BPM) to 'heartrate' to separate from 'spo2' (%)
+        if (data.type === 'Pulse') type = 'heartrate'; 
+        if (data.type === 'SPO2') type = 'spo2';
         if (data.type === 'HeartRate') type = 'heartrate';
-        if (data.type === 'SPO2') type = 'heartrate';
+
+        // Map BPM from Pulse/HeartRate legacy
+        let valBpm = data.bpm || data.pulse; 
 
         return {
           id: doc.id,
@@ -417,7 +451,8 @@ const App = () => {
           diastolic: data.diastolic,
           sugarLevel: data.sugar,
           sugarType: data.sugarType,
-          bpm: data.pulse || data.bpm,
+          bpm: valBpm,
+          spo2: data.spo2, // Only set if explicit
         };
       });
       
@@ -452,7 +487,8 @@ const App = () => {
           timestamp: timestamp,
           medicineName: data.medicationName,
           dosage: data.dosage,
-          frequency: data.frequency
+          frequency: data.frequency,
+          description: data.description || ''
         };
       });
 
@@ -559,6 +595,7 @@ const App = () => {
           medicationName: data.medicineName,
           dosage: data.dosage,
           frequency: data.frequency,
+          description: data.description,
           createdAt: Date.now()
         });
       } else {
@@ -567,7 +604,7 @@ const App = () => {
 
         if (type === 'bp') { dbType = 'BP'; dbData = { systolic: parseInt(data.systolic), diastolic: parseInt(data.diastolic) }; } 
         else if (type === 'sugar') { dbType = 'Sugar'; dbData = { sugar: parseInt(data.sugarLevel), sugarType: data.sugarType }; } 
-        else if (type === 'pulse') { dbType = 'Pulse'; dbData = { pulse: parseInt(data.bpm) }; } 
+        else if (type === 'spo2') { dbType = 'SPO2'; dbData = { spo2: parseInt(data.spo2) }; } 
         else if (type === 'heartrate') { dbType = 'HeartRate'; dbData = { bpm: parseInt(data.bpm) }; }
 
         await addDoc(collectionRef, { type: dbType, ...dbData, timestamp: Date.now() });
@@ -575,9 +612,9 @@ const App = () => {
 
       if (type === 'bp') { setBpSys(''); setBpDia(''); }
       if (type === 'sugar') { setSugarVal(''); setSugarType('Random'); }
-      if (type === 'pulse') setPulseVal('');
+      if (type === 'spo2') setSpo2Val('');
       if (type === 'heartrate') setHeartRateVal('');
-      if (type === 'medicine') { setMedName(''); setMedDosage(''); setMedFreq(''); }
+      if (type === 'medicine') { setMedName(''); setMedDosage(''); setMedFreq(''); setMedDesc(''); }
 
     } catch (err) {
       console.error("Error adding record:", err);
@@ -602,8 +639,14 @@ const App = () => {
     if (!user || !editingMedId) return;
     try {
       const docRef = doc(db, `artifacts/${APP_ID}/users/${user.uid}/medications`, editingMedId);
-      await updateDoc(docRef, { medicationName: medName, dosage: medDosage, frequency: medFreq, updatedAt: Date.now() });
-      setMedName(''); setMedDosage(''); setMedFreq(''); setEditingMedId(null);
+      await updateDoc(docRef, { 
+        medicationName: medName, 
+        dosage: medDosage, 
+        frequency: medFreq, 
+        description: medDesc,
+        updatedAt: Date.now() 
+      });
+      setMedName(''); setMedDosage(''); setMedFreq(''); setMedDesc(''); setEditingMedId(null);
     } catch (err) {
       console.error("Update medicine error:", err);
       alert("Failed to update medicine.");
@@ -623,7 +666,8 @@ const App = () => {
         date: r.date,
         val: r.type === 'bp' ? `${r.systolic}/${r.diastolic}` : 
              r.type === 'sugar' ? `${r.sugarLevel} ${r.sugarType}` :
-             r.type === 'medicine' ? `${r.medicineName} ${r.dosage}` :
+             r.type === 'spo2' ? `${r.spo2}%` :
+             r.type === 'medicine' ? `${r.medicineName} ${r.dosage} (${r.description})` :
              r.bpm
       }));
 
@@ -658,13 +702,13 @@ const App = () => {
     content += `================================================================================\n\n`;
     
     content += `MEDICATIONS\n`;
-    content += `--------------------------------------------------------------------------------\n`;
-    content += `| MEDICINE NAME       | DOSAGE          | FREQUENCY       |\n`;
-    content += `|---------------------|-----------------|-----------------|\n`;
+    content += `----------------------------------------------------------------------------------------------------\n`;
+    content += `| MEDICINE NAME       | DOSAGE          | FREQUENCY       | DESCRIPTION                        |\n`;
+    content += `|---------------------|-----------------|-----------------|------------------------------------|\n`;
     records.filter(r => r.type === 'medicine').forEach(r => {
-      content += `| ${(r.medicineName || '').padEnd(19)} | ${(r.dosage || '').padEnd(15)} | ${(r.frequency || '').padEnd(15)} |\n`;
+      content += `| ${(r.medicineName || '').padEnd(19)} | ${(r.dosage || '').padEnd(15)} | ${(r.frequency || '').padEnd(15)} | ${(r.description || '').substring(0,34).padEnd(34)} |\n`;
     });
-    content += `--------------------------------------------------------------------------------\n\n`;
+    content += `----------------------------------------------------------------------------------------------------\n\n`;
     
     content += `HEALTH HISTORY\n`;
     content += `--------------------------------------------------------------------------------\n`;
@@ -674,13 +718,14 @@ const App = () => {
     records.filter(r => r.type !== 'medicine').forEach(r => {
       const d = new Date(r.timestamp);
       const date = d.toLocaleDateString().padEnd(10);
-      const time = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).padEnd(8);
+      const time = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true}).padEnd(8);
       const type = r.type.toUpperCase().padEnd(10);
       
       let val = '';
       if (r.type === 'bp') val = `${r.systolic}/${r.diastolic} mmHg`;
       else if (r.type === 'sugar') val = `${r.sugarLevel} mg/dL (${r.sugarType})`;
-      else if (r.type === 'pulse' || r.type === 'heartrate') val = `${r.bpm} BPM`;
+      else if (r.type === 'heartrate') val = `${r.bpm} BPM`;
+      else if (r.type === 'spo2') val = `${r.spo2} %`;
       
       content += `| ${date} | ${time} | ${type} | ${val.padEnd(30)} |\n`;
     });
@@ -699,14 +744,14 @@ const App = () => {
 
   // --- Render ---
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-sky-600" size={48} /></div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900"><Loader2 className="animate-spin text-sky-600" size={48} /></div>;
 
   if (!user) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-sky-100">
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-sky-100 dark:from-slate-900 dark:to-slate-800">
         <div className="mb-8 scale-150"><Logo /></div>
-        <div className="bg-white/80 backdrop-blur-sm p-8 rounded-3xl shadow-xl w-full max-w-md border border-white/50">
-          <h2 className="text-2xl font-bold text-center text-slate-800 mb-6">
+        <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm p-8 rounded-3xl shadow-xl w-full max-w-md border border-white/50 dark:border-slate-700">
+          <h2 className="text-2xl font-bold text-center text-slate-800 dark:text-white mb-6">
             {authMode === 'signin' ? 'Welcome Back' : authMode === 'signup' ? 'Get Started' : 'Reset Password'}
           </h2>
           
@@ -716,22 +761,22 @@ const App = () => {
                  <CheckCircle2 size={32} className="mb-2" />
                  <p>Reset link sent!</p>
                </div>
-               <p className="text-slate-600 mb-6">Check your email {email} for instructions to reset your password.</p>
+               <p className="text-slate-600 dark:text-slate-400 mb-6">Check your email {email} for instructions to reset your password.</p>
                <button onClick={() => { setResetSent(false); setAuthMode('signin'); }} className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl transition-all">Back to Sign In</button>
             </div>
           ) : (
             <form onSubmit={handleAuth} className="space-y-4">
               {authMode === 'signup' && (
                 <>
-                  <input type="text" required className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 text-slate-900" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} />
-                  <input type="number" required className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 text-slate-900" placeholder="Age" value={age} onChange={e => setAge(e.target.value)} />
+                  <input type="text" required className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 text-slate-900 dark:text-white" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} />
+                  <input type="number" required className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 text-slate-900 dark:text-white" placeholder="Age" value={age} onChange={e => setAge(e.target.value)} />
                 </>
               )}
               
-              <input type="email" required className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 text-slate-900" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+              <input type="email" required className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 text-slate-900 dark:text-white" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
               
               {authMode !== 'forgot' && (
-                <input type="password" required className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 text-slate-900" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
+                <input type="password" required className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 text-slate-900 dark:text-white" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
               )}
               
               {authMode === 'signin' && (
@@ -749,13 +794,13 @@ const App = () => {
           )}
 
           {!resetSent && (
-            <div className="mt-6 text-center text-sm text-slate-500">
+            <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
               {authMode === 'signin' ? (
                 <p>New here? <button onClick={() => { setAuthMode('signup'); setAuthError(''); }} className="text-sky-600 font-bold hover:underline">Sign up</button></p>
               ) : authMode === 'signup' ? (
                 <p>Has account? <button onClick={() => { setAuthMode('signin'); setAuthError(''); }} className="text-sky-600 font-bold hover:underline">Log in</button></p>
               ) : (
-                <button onClick={() => { setAuthMode('signin'); setAuthError(''); }} className="flex items-center justify-center gap-1 mx-auto text-slate-500 font-medium hover:text-sky-600 hover:underline"><ArrowLeft size={16} /> Back to Sign In</button>
+                <button onClick={() => { setAuthMode('signin'); setAuthError(''); }} className="flex items-center justify-center gap-1 mx-auto text-slate-500 dark:text-slate-400 font-medium hover:text-sky-600 hover:underline"><ArrowLeft size={16} /> Back to Sign In</button>
               )}
             </div>
           )}
@@ -770,18 +815,26 @@ const App = () => {
   // Data for Charts
   const bpData = historyRecords.filter(r => r.type === 'bp');
   const sugarData = historyRecords.filter(r => r.type === 'sugar');
-  const heartData = historyRecords.filter(r => r.type === 'pulse' || r.type === 'heartrate');
+  const spo2Data = historyRecords.filter(r => r.type === 'spo2');
+  const heartData = historyRecords.filter(r => r.type === 'heartrate' || (r.type === 'spo2' && r.bpm)); // Fallback if bpm exists in spo2
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 pb-12 font-sans">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 pb-12 font-sans transition-colors duration-200">
       
       {/* Navbar */}
-      <header className="bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20 no-print">
+      <header className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-20 no-print transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Logo />
           <div className="flex items-center gap-2">
-            <button onClick={() => { setEditName(user.name); setEditAge(user.age.toString()); setEditEmail(user.email); setEditPassword(''); setShowProfile(true); }} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"><Settings size={20} /></button>
-            <button onClick={handleLogout} className="p-2 text-rose-500 hover:bg-rose-50 rounded-full transition-colors"><LogOut size={20} /></button>
+            <button 
+              onClick={toggleTheme} 
+              className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+              title="Toggle Theme"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+            <button onClick={() => { setEditName(user.name); setEditAge(user.age.toString()); setEditEmail(user.email); setEditPassword(''); setShowProfile(true); }} className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"><Settings size={20} /></button>
+            <button onClick={handleLogout} className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-full transition-colors"><LogOut size={20} /></button>
           </div>
         </div>
       </header>
@@ -791,13 +844,13 @@ const App = () => {
         {/* Profile Modal */}
         {showProfile && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm no-print">
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6">
-                <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-slate-800">Edit Profile</h3><button onClick={() => setShowProfile(false)}><X size={24} className="text-slate-400" /></button></div>
+             <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md p-6 border border-slate-200 dark:border-slate-700">
+                <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-slate-800 dark:text-white">Edit Profile</h3><button onClick={() => setShowProfile(false)}><X size={24} className="text-slate-400" /></button></div>
                 <form onSubmit={updateCurrentUserProfile} className="space-y-4">
-                  <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full p-3 bg-white border rounded-xl text-slate-900" placeholder="Name" />
-                  <input type="number" value={editAge} onChange={e => setEditAge(e.target.value)} className="w-full p-3 bg-white border rounded-xl text-slate-900" placeholder="Age" />
-                  <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="w-full p-3 bg-white border rounded-xl text-slate-900" placeholder="Email" />
-                  <input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} className="w-full p-3 bg-white border rounded-xl text-slate-900" placeholder="New Password (Optional)" />
+                  <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" placeholder="Name" />
+                  <input type="number" value={editAge} onChange={e => setEditAge(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" placeholder="Age" />
+                  <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" placeholder="Email" />
+                  <input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-slate-900 dark:text-white" placeholder="New Password (Optional)" />
                   <button type="submit" className="w-full py-3 bg-sky-600 text-white font-bold rounded-xl">Save Changes</button>
                 </form>
              </div>
@@ -805,21 +858,21 @@ const App = () => {
         )}
 
         {/* Top Dashboard Card */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-6 transition-colors duration-200">
           <div className="flex items-center gap-4 w-full md:w-auto">
-            <div className="w-16 h-16 bg-sky-100 rounded-full flex items-center justify-center text-sky-600 font-bold text-2xl border-4 border-white shadow-sm">
+            <div className="w-16 h-16 bg-sky-100 dark:bg-sky-900/30 rounded-full flex items-center justify-center text-sky-600 dark:text-sky-400 font-bold text-2xl border-4 border-white dark:border-slate-800 shadow-sm">
               {user.name.charAt(0)}
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-slate-800">Hello, {user.name}</h2>
-              <div className="flex items-center gap-3 text-slate-500 text-sm mt-1">
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Hello, {user.name}</h2>
+              <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-sm mt-1">
                  <span className="flex items-center gap-1"><UserIcon size={14} /> Age: {user.age}</span>
-                 <span className="h-1 w-1 bg-slate-300 rounded-full"></span>
-                 <span className="text-green-600 font-medium">Status: Active</span>
+                 <span className="h-1 w-1 bg-slate-300 dark:bg-slate-700 rounded-full"></span>
+                 <span className="text-green-600 dark:text-green-400 font-medium">Status: Active</span>
               </div>
             </div>
           </div>
-          <div className="hidden md:block h-12 w-px bg-slate-100"></div>
+          <div className="hidden md:block h-12 w-px bg-slate-100 dark:bg-slate-800"></div>
           <LiveClock />
         </div>
 
@@ -827,68 +880,68 @@ const App = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 no-print">
           
           {/* BP Card */}
-          <div className="bg-white rounded-2xl shadow-sm border-l-4 border-rose-500 overflow-hidden hover:shadow-md transition-shadow">
-            <div className="p-4 bg-rose-50/50 border-b border-rose-100 flex items-center gap-2">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border-l-4 border-rose-500 overflow-hidden hover:shadow-md transition-shadow">
+            <div className="p-4 bg-rose-50/50 dark:bg-rose-950/20 border-b border-rose-100 dark:border-rose-900/30 flex items-center gap-2">
               <Activity className="text-rose-500" size={20} />
-              <h3 className="font-bold text-rose-900">Blood Pressure</h3>
+              <h3 className="font-bold text-rose-900 dark:text-rose-100">Blood Pressure</h3>
             </div>
             <div className="p-5 space-y-4">
               <div className="flex gap-3">
-                <div className="flex-1"><label className="text-xs font-bold text-slate-400 mb-1 block">SYS</label><input type="number" value={bpSys} onChange={e => setBpSys(e.target.value)} className="w-full p-2 bg-slate-50 border-slate-200 rounded-lg text-lg font-mono text-slate-900 focus:ring-2 focus:ring-rose-500 outline-none" placeholder="120" /></div>
-                <div className="flex-1"><label className="text-xs font-bold text-slate-400 mb-1 block">DIA</label><input type="number" value={bpDia} onChange={e => setBpDia(e.target.value)} className="w-full p-2 bg-slate-50 border-slate-200 rounded-lg text-lg font-mono text-slate-900 focus:ring-2 focus:ring-rose-500 outline-none" placeholder="80" /></div>
+                <div className="flex-1"><label className="text-xs font-bold text-slate-400 mb-1 block">SYS</label><input type="number" value={bpSys} onChange={e => setBpSys(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg text-lg font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500 outline-none" placeholder="120" /></div>
+                <div className="flex-1"><label className="text-xs font-bold text-slate-400 mb-1 block">DIA</label><input type="number" value={bpDia} onChange={e => setBpDia(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg text-lg font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500 outline-none" placeholder="80" /></div>
               </div>
               <button onClick={() => { if(bpSys && bpDia) addRecord('bp', { systolic: bpSys, diastolic: bpDia }) }} className="w-full py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg font-medium flex justify-center items-center gap-2"><Plus size={18} /> Add</button>
             </div>
           </div>
 
           {/* Sugar Card */}
-          <div className="bg-white rounded-2xl shadow-sm border-l-4 border-amber-500 overflow-hidden hover:shadow-md transition-shadow">
-            <div className="p-4 bg-amber-50/50 border-b border-amber-100 flex items-center gap-2">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border-l-4 border-amber-500 overflow-hidden hover:shadow-md transition-shadow">
+            <div className="p-4 bg-amber-50/50 dark:bg-amber-950/20 border-b border-amber-100 dark:border-amber-900/30 flex items-center gap-2">
               <Droplet className="text-amber-500" size={20} />
-              <h3 className="font-bold text-amber-900">Blood Sugar</h3>
+              <h3 className="font-bold text-amber-900 dark:text-amber-100">Blood Sugar</h3>
             </div>
             <div className="p-5 space-y-4">
-              <div><label className="text-xs font-bold text-slate-400 mb-1 block">LEVEL (mg/dL)</label><input type="number" value={sugarVal} onChange={e => setSugarVal(e.target.value)} className="w-full p-2 bg-slate-50 border-slate-200 rounded-lg text-lg font-mono text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none" placeholder="110" /></div>
-              <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+              <div><label className="text-xs font-bold text-slate-400 mb-1 block">LEVEL (mg/dL)</label><input type="number" value={sugarVal} onChange={e => setSugarVal(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg text-lg font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 outline-none" placeholder="110" /></div>
+              <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
                 {['Fasting', 'Post-Prandial', 'Random'].map(t => (
-                  <button key={t} onClick={() => setSugarType(t as any)} className={`flex-1 py-1 text-xs rounded-md font-medium transition-colors ${sugarType === t ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500'}`}>{t === 'Post-Prandial' ? 'PP' : t}</button>
+                  <button key={t} onClick={() => setSugarType(t as any)} className={`flex-1 py-1 text-xs rounded-md font-medium transition-colors ${sugarType === t ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>{t === 'Post-Prandial' ? 'PP' : t}</button>
                 ))}
               </div>
               <button onClick={() => { if(sugarVal) addRecord('sugar', { sugarLevel: sugarVal, sugarType }) }} className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium flex justify-center items-center gap-2"><Plus size={18} /> Add</button>
             </div>
           </div>
 
-          {/* Pulse Card */}
-          <div className="bg-white rounded-2xl shadow-sm border-l-4 border-emerald-500 overflow-hidden hover:shadow-md transition-shadow">
-            <div className="p-4 bg-emerald-50/50 border-b border-emerald-100 flex items-center gap-2">
-              <Heart className="text-emerald-500" size={20} />
-              <h3 className="font-bold text-emerald-900">Pulse</h3>
+          {/* SpO2 Card (Was Pulse) */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border-l-4 border-emerald-500 overflow-hidden hover:shadow-md transition-shadow">
+            <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/20 border-b border-emerald-100 dark:border-emerald-900/30 flex items-center gap-2">
+              <Wind className="text-emerald-500" size={20} />
+              <h3 className="font-bold text-emerald-900 dark:text-emerald-100">SpO2</h3>
             </div>
             <div className="p-5 space-y-4">
-              <div><label className="text-xs font-bold text-slate-400 mb-1 block">BPM</label><input type="number" value={pulseVal} onChange={e => setPulseVal(e.target.value)} className="w-full p-2 bg-slate-50 border-slate-200 rounded-lg text-lg font-mono text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="72" /></div>
-              <button onClick={() => { if(pulseVal) addRecord('pulse', { bpm: pulseVal }) }} className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium flex justify-center items-center gap-2"><Plus size={18} /> Add</button>
+              <div><label className="text-xs font-bold text-slate-400 mb-1 block">PERCENTAGE (%)</label><input type="number" value={spo2Val} onChange={e => setSpo2Val(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg text-lg font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="98" /></div>
+              <button onClick={() => { if(spo2Val) addRecord('spo2', { spo2: spo2Val }) }} className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium flex justify-center items-center gap-2"><Plus size={18} /> Add</button>
             </div>
           </div>
 
           {/* Heart Rate Card */}
-          <div className="bg-white rounded-2xl shadow-sm border-l-4 border-cyan-500 overflow-hidden hover:shadow-md transition-shadow">
-            <div className="p-4 bg-cyan-50/50 border-b border-cyan-100 flex items-center gap-2">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border-l-4 border-cyan-500 overflow-hidden hover:shadow-md transition-shadow">
+            <div className="p-4 bg-cyan-50/50 dark:bg-cyan-950/20 border-b border-cyan-100 dark:border-cyan-900/30 flex items-center gap-2">
               <Stethoscope className="text-cyan-500" size={20} />
-              <h3 className="font-bold text-cyan-900">Heart Rate</h3>
+              <h3 className="font-bold text-cyan-900 dark:text-cyan-100">Heart Rate</h3>
             </div>
             <div className="p-5 space-y-4">
-              <div><label className="text-xs font-bold text-slate-400 mb-1 block">MONITOR BPM</label><input type="number" value={heartRateVal} onChange={e => setHeartRateVal(e.target.value)} className="w-full p-2 bg-slate-50 border-slate-200 rounded-lg text-lg font-mono text-slate-900 focus:ring-2 focus:ring-cyan-500 outline-none" placeholder="75" /></div>
+              <div><label className="text-xs font-bold text-slate-400 mb-1 block">MONITOR BPM</label><input type="number" value={heartRateVal} onChange={e => setHeartRateVal(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg text-lg font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 outline-none" placeholder="75" /></div>
               <button onClick={() => { if(heartRateVal) addRecord('heartrate', { bpm: heartRateVal }) }} className="w-full py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium flex justify-center items-center gap-2"><Plus size={18} /> Add</button>
             </div>
           </div>
         </div>
 
         {/* Medicines Section */}
-        <div className="bg-white rounded-3xl shadow-sm border border-violet-100 overflow-hidden break-inside-avoid">
-          <div className="bg-violet-50/50 p-6 border-b border-violet-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-violet-100 dark:border-violet-900 overflow-hidden break-inside-avoid">
+          <div className="bg-violet-50/50 dark:bg-violet-950/30 p-6 border-b border-violet-100 dark:border-violet-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-violet-100 rounded-lg text-violet-600"><Pill size={24} /></div>
-              <h3 className="text-xl font-bold text-slate-800">Medications</h3>
+              <div className="p-2 bg-violet-100 dark:bg-violet-900/50 rounded-lg text-violet-600 dark:text-violet-300"><Pill size={24} /></div>
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white">Medications</h3>
             </div>
             <div className="flex gap-2">
                {/* Simplified Add Form Inline for Desktop could go here, but keeping it simple */}
@@ -897,21 +950,22 @@ const App = () => {
           
           <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
              {/* Add/Edit Form */}
-             <div className="lg:col-span-1 bg-slate-50 p-5 rounded-2xl h-fit no-print">
-                <h4 className="font-bold text-slate-700 mb-4">{editingMedId ? 'Edit Medicine' : 'Add New Medicine'}</h4>
+             <div className="lg:col-span-1 bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl h-fit no-print">
+                <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-4">{editingMedId ? 'Edit Medicine' : 'Add New Medicine'}</h4>
                 <div className="space-y-3">
-                  <input type="text" value={medName} onChange={e => setMedName(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm" placeholder="Name (e.g. Aspirin)" />
+                  <input type="text" value={medName} onChange={e => setMedName(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm" placeholder="Name (e.g. Aspirin)" />
                   <div className="flex gap-2">
-                    <input type="text" value={medDosage} onChange={e => setMedDosage(e.target.value)} className="w-1/2 p-3 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm" placeholder="Dosage" />
-                    <input type="text" value={medFreq} onChange={e => setMedFreq(e.target.value)} className="w-1/2 p-3 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm" placeholder="Freq" />
+                    <input type="text" value={medDosage} onChange={e => setMedDosage(e.target.value)} className="w-1/2 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm" placeholder="Dosage" />
+                    <input type="text" value={medFreq} onChange={e => setMedFreq(e.target.value)} className="w-1/2 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm" placeholder="Freq" />
                   </div>
+                  <textarea value={medDesc} onChange={e => setMedDesc(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm resize-none" rows={2} placeholder="Description (Optional)" />
                   {editingMedId ? (
                     <div className="flex gap-2 mt-2">
                       <button onClick={saveEditedMedicine} className="flex-1 py-2 bg-green-500 text-white rounded-lg text-sm font-bold">Save</button>
-                      <button onClick={() => {setEditingMedId(null); setMedName(''); setMedDosage(''); setMedFreq('');}} className="flex-1 py-2 bg-slate-200 text-slate-600 rounded-lg text-sm font-bold">Cancel</button>
+                      <button onClick={() => {setEditingMedId(null); setMedName(''); setMedDosage(''); setMedFreq(''); setMedDesc('');}} className="flex-1 py-2 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-sm font-bold">Cancel</button>
                     </div>
                   ) : (
-                    <button onClick={() => { if(medName) addRecord('medicine', { medicineName: medName, dosage: medDosage, frequency: medFreq }) }} className="w-full py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold flex justify-center items-center gap-2 mt-2"><Plus size={16} /> Add to List</button>
+                    <button onClick={() => { if(medName) addRecord('medicine', { medicineName: medName, dosage: medDosage, frequency: medFreq, description: medDesc }) }} className="w-full py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold flex justify-center items-center gap-2 mt-2"><Plus size={16} /> Add to List</button>
                   )}
                 </div>
              </div>
@@ -926,14 +980,15 @@ const App = () => {
                 ) : (
                   <div className="space-y-3">
                     {medicineRecords.map(med => (
-                      <div key={med.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-violet-200 transition-colors break-inside-avoid">
-                        <div>
-                          <div className="font-bold text-slate-800 text-lg">{med.medicineName}</div>
-                          <div className="text-sm text-slate-500 font-medium bg-slate-100 inline-block px-2 py-0.5 rounded-md mt-1">{med.dosage} • {med.frequency}</div>
+                      <div key={med.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl shadow-sm hover:border-violet-200 dark:hover:border-violet-800 transition-colors break-inside-avoid gap-4">
+                        <div className="flex-1">
+                          <div className="font-bold text-slate-800 dark:text-white text-lg">{med.medicineName}</div>
+                          <div className="text-sm text-slate-500 dark:text-slate-400 font-medium bg-slate-100 dark:bg-slate-700 inline-block px-2 py-0.5 rounded-md mt-1">{med.dosage} • {med.frequency}</div>
+                          {med.description && <div className="text-sm text-slate-500 dark:text-slate-400 mt-2 italic border-l-2 border-violet-200 pl-2">{med.description}</div>}
                         </div>
-                        <div className="flex items-center gap-2 no-print">
-                          <button onClick={() => { setMedName(med.medicineName); setMedDosage(med.dosage); setMedFreq(med.frequency); setEditingMedId(med.id); }} className="p-2 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg"><Edit2 size={18} /></button>
-                          <button onClick={() => deleteRecord(med.id, 'medicine')} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={18} /></button>
+                        <div className="flex items-center gap-2 no-print self-end sm:self-center">
+                          <button onClick={() => { setMedName(med.medicineName); setMedDosage(med.dosage); setMedFreq(med.frequency); setMedDesc(med.description || ''); setEditingMedId(med.id); }} className="p-2 text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900 rounded-lg"><Edit2 size={18} /></button>
+                          <button onClick={() => deleteRecord(med.id, 'medicine')} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900 rounded-lg"><Trash2 size={18} /></button>
                         </div>
                       </div>
                     ))}
@@ -944,22 +999,22 @@ const App = () => {
         </div>
 
         {/* History & Trends Section */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden card break-inside-avoid">
-          <div className="p-6 border-b border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50/50">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden card break-inside-avoid">
+          <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50/50 dark:bg-slate-800/50">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><ClipboardList size={24} /></div>
+              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-300"><ClipboardList size={24} /></div>
               <div>
-                <h3 className="text-xl font-bold text-slate-800">Health History</h3>
-                <p className="text-sm text-slate-500 hidden sm:block">{historyRecords.length} records recorded</p>
+                <h3 className="text-xl font-bold text-slate-800 dark:text-white">Health History</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 hidden sm:block">{historyRecords.length} records recorded</p>
               </div>
             </div>
             
             <div className="flex gap-2 w-full md:w-auto overflow-x-auto no-print">
-              <div className="flex bg-slate-200 p-1 rounded-xl mr-2">
-                <button onClick={() => setHistoryView('table')} className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${historyView === 'table' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}><List size={16} /> Table</button>
-                <button onClick={() => setHistoryView('chart')} className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${historyView === 'chart' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}><BarChart2 size={16} /> Trends</button>
+              <div className="flex bg-slate-200 dark:bg-slate-700 p-1 rounded-xl mr-2">
+                <button onClick={() => setHistoryView('table')} className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${historyView === 'table' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white'}`}><List size={16} /> Table</button>
+                <button onClick={() => setHistoryView('chart')} className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${historyView === 'chart' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white'}`}><BarChart2 size={16} /> Trends</button>
               </div>
-              <button onClick={() => window.print()} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl text-sm hover:bg-slate-50 flex items-center gap-2"><Printer size={16} /> Print</button>
+              <button onClick={() => window.print()} className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"><Printer size={16} /> Print</button>
               <button onClick={downloadReport} className="px-3 py-1.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 flex items-center gap-2"><Download size={16} /> Export</button>
             </div>
           </div>
@@ -973,7 +1028,7 @@ const App = () => {
             ) : historyView === 'table' ? (
               <div className="overflow-x-auto print:overflow-visible">
                 <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold tracking-wider">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">
                     <tr>
                       <th className="px-6 py-4">Date & Time</th>
                       <th className="px-6 py-4">Type</th>
@@ -981,26 +1036,28 @@ const App = () => {
                       <th className="px-6 py-4 text-right no-print">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-sm">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
                     {historyRecords.map(r => (
-                      <tr key={r.id} className="hover:bg-slate-50 transition-colors break-inside-avoid">
-                        <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">{formatDate(r.timestamp)}</td>
+                      <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors break-inside-avoid">
+                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-slate-200 whitespace-nowrap">{formatDate(r.timestamp)}</td>
                         <td className="px-6 py-4">
                           <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
-                            r.type === 'bp' ? 'bg-rose-100 text-rose-700' : 
-                            r.type === 'sugar' ? 'bg-amber-100 text-amber-700' : 
-                            'bg-emerald-100 text-emerald-700'
+                            r.type === 'bp' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' : 
+                            r.type === 'sugar' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : 
+                            r.type === 'spo2' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                            'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300'
                           }`}>
                             {r.type}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-slate-600 font-mono text-base">
-                          {r.type === 'bp' && <span><span className="font-bold text-slate-900">{r.systolic}</span>/<span className="font-bold text-slate-900">{r.diastolic}</span> <span className="text-xs text-slate-400 ml-1">mmHg</span></span>}
-                          {r.type === 'sugar' && <span><span className="font-bold text-slate-900">{r.sugarLevel}</span> <span className="text-xs text-slate-400 ml-1">mg/dL</span> <span className="text-xs bg-slate-100 px-1 rounded ml-2">{r.sugarType === 'Post-Prandial' ? 'PP' : r.sugarType}</span></span>}
-                          {(r.type === 'pulse' || r.type === 'heartrate') && <span><span className="font-bold text-slate-900">{r.bpm}</span> <span className="text-xs text-slate-400 ml-1">BPM</span></span>}
+                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-mono text-base">
+                          {r.type === 'bp' && <span><span className="font-bold text-slate-900 dark:text-white">{r.systolic}</span>/<span className="font-bold text-slate-900 dark:text-white">{r.diastolic}</span> <span className="text-xs text-slate-400 ml-1">mmHg</span></span>}
+                          {r.type === 'sugar' && <span><span className="font-bold text-slate-900 dark:text-white">{r.sugarLevel}</span> <span className="text-xs text-slate-400 ml-1">mg/dL</span> <span className="text-xs bg-slate-100 dark:bg-slate-700 px-1 rounded ml-2">{r.sugarType === 'Post-Prandial' ? 'PP' : r.sugarType}</span></span>}
+                          {r.type === 'spo2' && <span><span className="font-bold text-slate-900 dark:text-white">{r.spo2}</span> <span className="text-xs text-slate-400 ml-1">%</span></span>}
+                          {(r.type === 'heartrate' || r.type === 'pulse') && !r.spo2 && <span><span className="font-bold text-slate-900 dark:text-white">{r.bpm}</span> <span className="text-xs text-slate-400 ml-1">BPM</span></span>}
                         </td>
                         <td className="px-6 py-4 text-right no-print">
-                          <button onClick={() => deleteRecord(r.id, r.type)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                          <button onClick={() => deleteRecord(r.id, r.type)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900 rounded-lg transition-colors"><Trash2 size={16} /></button>
                         </td>
                       </tr>
                     ))}
@@ -1010,17 +1067,21 @@ const App = () => {
             ) : (
               <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
                  {/* Charts - Visible on print as well */}
-                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 break-inside-avoid">
-                    <h4 className="font-bold text-rose-900 mb-4 flex items-center gap-2"><Activity size={18} /> Blood Pressure Trend</h4>
+                 <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 break-inside-avoid">
+                    <h4 className="font-bold text-rose-900 dark:text-rose-200 mb-4 flex items-center gap-2"><Activity size={18} /> Blood Pressure Trend</h4>
                     <SimpleLineChart data={bpData} lines={[{key:'systolic', color:'#f43f5e'}, {key:'diastolic', color:'#fb7185'}]} />
                  </div>
-                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 break-inside-avoid">
-                    <h4 className="font-bold text-amber-900 mb-4 flex items-center gap-2"><Droplet size={18} /> Blood Sugar Trend</h4>
+                 <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 break-inside-avoid">
+                    <h4 className="font-bold text-amber-900 dark:text-amber-200 mb-4 flex items-center gap-2"><Droplet size={18} /> Blood Sugar Trend</h4>
                     <SimpleLineChart data={sugarData} lines={[{key:'sugarLevel', color:'#f59e0b'}]} />
                  </div>
-                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 lg:col-span-2 break-inside-avoid">
-                    <h4 className="font-bold text-emerald-900 mb-4 flex items-center gap-2"><Heart size={18} /> Heart Rate Trend</h4>
-                    <SimpleLineChart data={heartData} lines={[{key:'bpm', color:'#10b981'}]} height={150} />
+                 <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 break-inside-avoid">
+                    <h4 className="font-bold text-emerald-900 dark:text-emerald-200 mb-4 flex items-center gap-2"><Wind size={18} /> SpO2 Trend</h4>
+                    <SimpleLineChart data={spo2Data} lines={[{key:'spo2', color:'#10b981'}]} />
+                 </div>
+                 <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 break-inside-avoid">
+                    <h4 className="font-bold text-cyan-900 dark:text-cyan-200 mb-4 flex items-center gap-2"><Stethoscope size={18} /> Heart Rate Trend</h4>
+                    <SimpleLineChart data={heartData} lines={[{key:'bpm', color:'#06b6d4'}]} height={150} />
                  </div>
               </div>
             )}
@@ -1028,7 +1089,7 @@ const App = () => {
         </div>
 
         {/* AI Assistant (Moved to bottom) */}
-        <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl shadow-lg shadow-indigo-200 text-white p-8 no-print">
+        <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl shadow-lg shadow-indigo-200 dark:shadow-none text-white p-8 no-print">
            <div className="flex flex-col md:flex-row gap-6 items-start">
              <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-sm">
                <Brain size={48} className="text-white" />
@@ -1061,8 +1122,8 @@ const App = () => {
 
       </main>
 
-      <footer className="text-center text-slate-400 text-sm mt-8 pb-8 no-print">
-        <p>&copy; {new Date().getFullYear()} PulseGuard. Product of Cordulatech.</p>
+      <footer className="text-center text-slate-400 dark:text-slate-500 text-sm mt-8 pb-8 no-print">
+        <p>&copy; {new Date().getFullYear()} PulseGuard. Product of <a href="https://cordulatech.com/" target="_blank" rel="noopener noreferrer" className="text-sky-600 dark:text-sky-400 hover:underline">Cordulatech</a>.</p>
       </footer>
     </div>
   );
