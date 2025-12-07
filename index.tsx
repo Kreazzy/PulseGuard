@@ -21,8 +21,8 @@ import {
   query, 
   deleteDoc, 
   doc, 
-  updateDoc,
-  setDoc,
+  updateDoc, 
+  setDoc, 
   getDoc
 } from "firebase/firestore";
 import {
@@ -129,7 +129,7 @@ const SimpleLineChart = ({ data, lines, height = 200 }: SimpleLineChartProps) =>
   
   lines.forEach(line => {
     sortedData.forEach(d => {
-      const val = parseInt(d[line.key] || 0);
+      const val = parseInt(d[line.key] || 0, 10);
       if (!isNaN(val)) {
         if (val < minVal) minVal = val;
         if (val > maxVal) maxVal = val;
@@ -172,7 +172,7 @@ const SimpleLineChart = ({ data, lines, height = 200 }: SimpleLineChartProps) =>
         {/* Lines */}
         {lines.map((line) => {
            const points = sortedData.map((d, i) => {
-             const val = parseInt(d[line.key]);
+             const val = parseInt(d[line.key], 10);
              return isNaN(val) ? null : `${getX(i)},${getY(val)}`;
            }).filter(p => p).join(' ');
            
@@ -194,7 +194,7 @@ const SimpleLineChart = ({ data, lines, height = 200 }: SimpleLineChartProps) =>
         {/* Interactive Dots - Rendered after lines to be on top */}
         {lines.map((line) => 
            sortedData.map((d, i) => {
-             const val = parseInt(d[line.key]);
+             const val = parseInt(d[line.key], 10);
              if (isNaN(val)) return null;
              const cx = getX(i);
              const cy = getY(val);
@@ -531,7 +531,7 @@ const App = () => {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await updateFirebaseProfile(userCredential.user, { displayName: name });
         await setDoc(doc(db, `artifacts/${APP_ID}/users/${userCredential.user.uid}/userProfile/info`), {
-          age: parseInt(age),
+          age: parseInt(age, 10),
           email: email,
           name: name
         });
@@ -578,12 +578,12 @@ const App = () => {
       if (editPassword) await updatePassword(auth.currentUser, editPassword);
 
       await setDoc(doc(db, `artifacts/${APP_ID}/users/${auth.currentUser.uid}/userProfile/info`), {
-        age: parseInt(editAge),
+        age: parseInt(editAge, 10),
         name: editName,
         email: editEmail
       }, { merge: true });
 
-      setUser(prev => prev ? ({ ...prev, name: editName, email: editEmail, age: parseInt(editAge) }) : null);
+      setUser(prev => prev ? ({ ...prev, name: editName, email: editEmail, age: parseInt(editAge, 10) }) : null);
       setShowProfile(false);
       alert("Profile updated successfully!");
     } catch (err: any) {
@@ -613,10 +613,10 @@ const App = () => {
         const collectionRef = collection(db, `artifacts/${APP_ID}/users/${user.uid}/healthReadings`);
         let dbType = '', dbData = {};
 
-        if (type === 'bp') { dbType = 'BP'; dbData = { systolic: parseInt(data.systolic), diastolic: parseInt(data.diastolic) }; } 
-        else if (type === 'sugar') { dbType = 'Sugar'; dbData = { sugar: parseInt(data.sugarLevel), sugarType: data.sugarType }; } 
-        else if (type === 'spo2') { dbType = 'SPO2'; dbData = { spo2: parseInt(data.spo2) }; } 
-        else if (type === 'heartrate') { dbType = 'HeartRate'; dbData = { bpm: parseInt(data.bpm) }; }
+        if (type === 'bp') { dbType = 'BP'; dbData = { systolic: parseInt(data.systolic, 10), diastolic: parseInt(data.diastolic, 10) }; } 
+        else if (type === 'sugar') { dbType = 'Sugar'; dbData = { sugar: parseInt(data.sugarLevel, 10), sugarType: data.sugarType }; } 
+        else if (type === 'spo2') { dbType = 'SPO2'; dbData = { spo2: parseInt(data.spo2, 10) || 0 }; } 
+        else if (type === 'heartrate') { dbType = 'HeartRate'; dbData = { bpm: parseInt(data.bpm, 10) }; }
 
         await addDoc(collectionRef, { type: dbType, ...dbData, timestamp: Date.now() });
       }
