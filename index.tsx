@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 import * as firebaseApp from "firebase/app";
@@ -103,8 +103,19 @@ interface HealthRecord {
 
 // --- Components ---
 
+interface ChartLine {
+  key: string;
+  color: string;
+}
+
+interface SimpleLineChartProps {
+  data: any[];
+  lines: ChartLine[];
+  height?: number;
+}
+
 // Interactive Line Chart Component
-const SimpleLineChart = ({ data, lines, height = 200 }) => {
+const SimpleLineChart = ({ data, lines, height = 200 }: SimpleLineChartProps) => {
   const [selectedPoint, setSelectedPoint] = useState<{x: number, y: number, value: number, label: string, date: string} | null>(null);
 
   if (!data || data.length < 2) return <div className="h-48 flex items-center justify-center text-gray-400 dark:text-gray-600 bg-gray-50 dark:bg-slate-900 rounded-lg">Not enough data to display chart</div>;
@@ -136,8 +147,8 @@ const SimpleLineChart = ({ data, lines, height = 200 }) => {
   const svgHeight = height;
   const svgWidth = 600; // Fixed width for coordinate system
 
-  const getX = (index) => (index / (sortedData.length - 1)) * (svgWidth - padding * 2) + padding;
-  const getY = (val) => svgHeight - padding - ((val - chartMin) / (chartMax - chartMin)) * (svgHeight - padding * 2);
+  const getX = (index: number) => (index / (sortedData.length - 1)) * (svgWidth - padding * 2) + padding;
+  const getY = (val: number) => svgHeight - padding - ((val - chartMin) / (chartMax - chartMin)) * (svgHeight - padding * 2);
 
   return (
     <div className="w-full h-full relative" onMouseLeave={() => setSelectedPoint(null)}>
